@@ -1,7 +1,12 @@
 @page "/settings"
 @attribute [Authorize]
 @inject IConfiguration Configuration
+@inject NavigationManager Navigation
 
 <PageTitle>系统设置</PageTitle>
 <div class="page-heading"><div><p class="eyebrow">配置中心</p><h2>系统设置</h2><p class="subtitle">查看当前证书签发与安全配置</p></div></div>
-<section class="panel"><dl><dt>ACME 环境</dt><dd>@Configuration["Acme:Environment"]</dd><dt>ACME 邮箱</dt><dd>@(string.IsNullOrWhiteSpace(Configuration["Acme:Email"]) ? "未配置" : Configuration["Acme:Email"])</dd><dt>续期阈值</dt><dd>@Configuration["Renewal:RenewBeforeDays"] 天</dd><dt>管理员密码</dt><dd>@(string.IsNullOrWhiteSpace(Configuration["Admin:PasswordHash"]) ? "未配置" : "已配置（不可回显）")</dd></dl></section><p class="helper">生产环境请通过环境变量或安全配置提供管理员密码哈希、ACME 邮箱和 Data Protection 密钥持久化目录。</p>
+<section class="panel"><div class="panel-heading"><div><h3>签发配置</h3><p>当前为只读配置；生产环境设置请通过部署配置更新。</p></div></div><dl><dt>ACME 环境</dt><dd><span class="environment-badge @(IsStaging ? "staging" : "production")">@(IsStaging ? "测试环境（Staging）" : "生产环境（Production）")</span>@if (IsStaging) { <span class="field-help inline-help">测试环境签发的证书不受浏览器信任。</span> }</dd><dt>ACME 邮箱</dt><dd>@(string.IsNullOrWhiteSpace(Configuration["Acme:Email"]) ? "未配置" : Configuration["Acme:Email"])</dd><dt>续期阈值</dt><dd>@Configuration["Renewal:RenewBeforeDays"] 天</dd></dl></section>
+
+<section class="panel"><div class="panel-heading"><div><h3>修改管理员密码</h3><p>修改成功后当前登录会话将退出。</p></div></div><form class="password-form" method="post" action="/api/auth/change-password"><label>旧密码<input name="OldPassword" type="password" autocomplete="current-password" required /></label><label>新密码<input name="NewPassword" type="password" autocomplete="new-password" minlength="8" required /></label><label>确认新密码<input name="ConfirmPassword" type="password" autocomplete="new-password" minlength="8" required /></label><button type="submit">修改密码</button>@if (!string.IsNullOrWhiteSpace(PasswordError)) { <p class="error">@PasswordError</p> }</form></section>
+
+@code { private string? PasswordError; private bool IsStaging => string.Equals(Configuration["Acme:Environment"], "Staging", StringComparison.OrdinalIgnoreCase); protected override void OnInitialized() { var marker = "passwordError="; var index = Navigation.Uri.IndexOf(marker, StringComparison.Ordinal); PasswordError = index < 0 ? null : Uri.UnescapeDataString(Navigation.Uri[(index + marker.Length)..].Split('&')[0]); } }

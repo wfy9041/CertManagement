@@ -58,6 +58,17 @@ public sealed class DomainService(IDbContextFactory<CertificateDbContext> dbFact
         await db.SaveChangesAsync(cancellationToken);
     }
 
+    public async Task SetAutoRenewAsync(int id, bool autoRenew, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var domain = await db.Domains.FindAsync([id], cancellationToken) ?? throw new KeyNotFoundException("域名不存在。");
+        domain.AutoRenew = autoRenew;
+        await db.Certificates.Where(x => x.DomainId == id)
+            .ExecuteUpdateAsync(setters => setters.SetProperty(x => x.AutoRenew, autoRenew), cancellationToken);
+        domain.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
     public static List<string> Names(DomainEntity domain) => new[] { domain.PrimaryDomain }
         .Concat(NormalizeSans(domain.Sans)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 

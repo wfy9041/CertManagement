@@ -31,7 +31,7 @@ public sealed class CertificateFileService(IWebHostEnvironment environment, IDbC
         if (relative is null) throw new FileNotFoundException("证书文件不存在。");
         var path = Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
         if (!path.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("非法证书路径。");
-        return (await File.ReadAllTextAsync(path, cancellationToken), $"{kind}.pem", "application/x-pem-file");
+        return (await File.ReadAllTextAsync(path, cancellationToken), DownloadName(certificate.PrimaryDomain, certificate.IssuedAt, kind, ".pem"), "application/x-pem-file");
     }
 
     public async Task<(byte[] Content, string FileName)> CreatePfxAsync(int certificateId, string password, CancellationToken cancellationToken)
@@ -40,7 +40,17 @@ public sealed class CertificateFileService(IWebHostEnvironment environment, IDbC
         var key = await ReadPemAsync(certificateId, "privkey", cancellationToken);
         var fullChain = await ReadPemAsync(certificateId, "fullchain", cancellationToken);
         using var certificate = X509Certificate2.CreateFromPem(fullChain.Content, key.Content);
-        return (certificate.Export(X509ContentType.Pkcs12, password), $"certificate-{certificateId}.pfx");
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var metadata = await db.Certificates.AsNoTracking().SingleAsync(x => x.Id == certificateId, cancellationToken);
+        return (certificate.Export(X509ContentType.Pkcs12, password), DownloadName(metadata.PrimaryDomain, metadata.IssuedAt, "certificate", ".pfx"));
+    }
+
+    private static string DownloadName(string domain, DateTime? issuedAt, string kind, string extension)
+    {
+        var safeDomain = string.IsNullOrWhiteSpace(domain) ? "certificate" : domain.Replace("*.", "wildcard.", StringComparison.Ordinal);
+        foreach (var invalid in Path.GetInvalidFileNameChars()) safeDomain = safeDomain.Replace(invalid, '_');
+        var date = (issuedAt ?? DateTime.UtcNow).ToLocalTime().ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
+        return $"{safeDomain}_{date}_{kind}{extension}";
     }
 
     private string Relative(string path) => Path.GetRelativePath(environment.ContentRootPath, path);

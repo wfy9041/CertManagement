@@ -6,6 +6,7 @@ namespace CertManagement.Infrastructure;
 
 public sealed class CertificateDbContext(DbContextOptions<CertificateDbContext> options) : DbContext(options)
 {
+    public DbSet<AdminCredential> AdminCredentials => Set<AdminCredential>();
     public DbSet<AcmeAccount> AcmeAccounts => Set<AcmeAccount>();
     public DbSet<DnsProviderAccount> DnsProviderAccounts => Set<DnsProviderAccount>();
     public DbSet<DomainEntity> Domains => Set<DomainEntity>();
@@ -15,6 +16,7 @@ public sealed class CertificateDbContext(DbContextOptions<CertificateDbContext> 
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
+        modelBuilder.Entity<AdminCredential>().HasIndex(x => x.Username).IsUnique();
         modelBuilder.Entity<AcmeAccount>().HasIndex(x => new { x.Environment, x.Email }).IsUnique();
         modelBuilder.Entity<DnsProviderAccount>().Property(x => x.Type).HasConversion<string>();
         modelBuilder.Entity<DomainEntity>().Property(x => x.ChallengeType).HasConversion<string>();

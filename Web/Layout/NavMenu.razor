@@ -1,8 +1,28 @@
+@inject NavigationManager Navigation
+@implements IDisposable
+
 <nav>
-    <a href="/">概览</a>
-    <a href="/domains">域名管理</a>
-    <a href="/certificates">证书管理</a>
-    <a href="/dns-providers">DNS 服务商</a>
-    <a href="/logs">申请日志</a>
-    <a href="/settings">系统设置</a>
+    <a href="/" class="@HomeClass">概览</a>
+    <a href="/domains" class="@DomainsClass">域名管理</a>
+    <a href="/certificates" class="@CertificatesClass">证书管理</a>
+    <a href="/dns-providers" class="@DnsProvidersClass">DNS 服务商</a>
+    <a href="/logs" class="@LogsClass">申请日志</a>
+    <a href="/settings" class="@SettingsClass">系统设置</a>
 </nav>
+
+@code {
+    protected override void OnInitialized() => Navigation.LocationChanged += OnLocationChanged;
+
+    private string HomeClass => GetActiveClass("/");
+    private string DomainsClass => GetActiveClass("/domains");
+    private string CertificatesClass => GetActiveClass("/certificates");
+    private string DnsProvidersClass => GetActiveClass("/dns-providers");
+    private string LogsClass => GetActiveClass("/logs");
+    private string SettingsClass => GetActiveClass("/settings");
+
+    private string GetActiveClass(string href) => string.Equals(new Uri(Navigation.Uri).AbsolutePath.TrimEnd('/'), href.TrimEnd('/'), StringComparison.OrdinalIgnoreCase) ? "active" : string.Empty;
+
+    private void OnLocationChanged(object? sender, EventArgs e) => InvokeAsync(StateHasChanged);
+
+    public void Dispose() => Navigation.LocationChanged -= OnLocationChanged;
+}
