@@ -1,0 +1,6 @@
+<Project>
+  <ItemGroup>
+    <Compile Remove="Application/AcmeCertificateService.cs" />
+    <Compile Remove="tests/**/*.cs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,5 @@
+@inherits LayoutComponentBase
+<div class="shell">
+    <aside class="sidebar"><div class="brand"><span class="brand-mark">证</span><div><h1>证书管理</h1><small>Certificate Manager</small></div></div><NavMenu /></aside>
+    <main class="content"><header class="topbar"><AuthorizeView><Authorized><div class="user-menu"><span>管理员：@context.User.Identity?.Name</span><a class="logout" href="/api/auth/logout">退出登录</a></div></Authorized></AuthorizeView></header>@Body</main>
+</div>

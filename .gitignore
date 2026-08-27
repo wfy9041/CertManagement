@@ -1,0 +1,15 @@
+bin/
+obj/
+.vs/
+.idea/
+*.user
+*.suo
+app.db
+app.db-shm
+app.db-wal
+data/*.db
+data/*.db-shm
+data/*.db-wal
+data/acme/
+data/certificates/
+logs/

@@ -1,0 +1,7 @@
+@page "/settings"
+@attribute [Authorize]
+@inject IConfiguration Configuration
+
+<PageTitle>系统设置</PageTitle>
+<div class="page-heading"><div><p class="eyebrow">配置中心</p><h2>系统设置</h2><p class="subtitle">查看当前证书签发与安全配置</p></div></div>
+<section class="panel"><dl><dt>ACME 环境</dt><dd>@Configuration["Acme:Environment"]</dd><dt>ACME 邮箱</dt><dd>@(string.IsNullOrWhiteSpace(Configuration["Acme:Email"]) ? "未配置" : Configuration["Acme:Email"])</dd><dt>续期阈值</dt><dd>@Configuration["Renewal:RenewBeforeDays"] 天</dd><dt>管理员密码</dt><dd>@(string.IsNullOrWhiteSpace(Configuration["Admin:PasswordHash"]) ? "未配置" : "已配置（不可回显）")</dd></dl></section><p class="helper">生产环境请通过环境变量或安全配置提供管理员密码哈希、ACME 邮箱和 Data Protection 密钥持久化目录。</p>

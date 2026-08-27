@@ -1,0 +1,10 @@
+@page "/"
+@attribute [Authorize]
+@inject DomainService Domains
+@inject CertificateService Certificates
+
+<PageTitle>概览</PageTitle>
+<div class="page-heading"><div><p class="eyebrow">证书管理</p><h2>运行概览</h2><p class="subtitle">快速了解域名与证书的当前状态</p></div></div>
+@if (loading) { <p>正在加载数据…</p> } else { <div class="cards"><div class="stat-card"><b>@domainCount</b><span>托管域名</span></div><div class="stat-card"><b>@certificateCount</b><span>证书总数</span></div><div class="stat-card"><b>@expiringCount</b><span>30 天内到期</span></div></div><section class="panel"><div class="panel-heading"><div><h3>最近证书</h3><p>按最近申请记录显示</p></div><a href="/certificates">查看全部</a></div><div class="table-wrap"><table><thead><tr><th>域名</th><th>状态</th><th>过期时间</th></tr></thead><tbody>@foreach (var item in recent) { <tr><td>@item.PrimaryDomain</td><td>@item.Status</td><td>@item.ExpiresAt?.ToLocalTime().ToString("yyyy-MM-dd HH:mm")</td></tr> }</tbody></table></div></section> }
+
+@code { private bool loading = true; private int domainCount, certificateCount, expiringCount; private List<Certificate> recent = []; protected override async Task OnInitializedAsync() { var domains = await Domains.ListAsync(); var certs = await Certificates.ListAsync(); domainCount = domains.Count; certificateCount = certs.Count; expiringCount = certs.Count(x => x.ExpiresAt is not null && x.ExpiresAt <= DateTime.UtcNow.AddDays(30)); recent = certs.Take(10).ToList(); loading = false; } }

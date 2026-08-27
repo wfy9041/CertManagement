@@ -1,0 +1,8 @@
+@page "/logs"
+@attribute [Authorize]
+@inject CertificateService Certificates
+
+<PageTitle>申请日志</PageTitle>
+<div class="page-heading"><div><p class="eyebrow">操作记录</p><h2>申请日志</h2><p class="subtitle">按证书查看申请与续期过程中的状态变化</p></div></div>
+<section class="panel"><div class="panel-heading"><div><h3>选择证书</h3><p>选择后加载对应的操作记录</p></div></div><div style="padding: 0 20px 20px"><select aria-label="选择证书" @onchange="SelectAsync"><option value="">请选择证书</option>@foreach (var c in certificates) { <option value="@c.Id">@c.PrimaryDomain</option> }</select></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>状态</th><th>消息</th></tr></thead><tbody>@foreach (var l in logs) { <tr><td>@l.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>@l.Status</td><td>@l.Message</td></tr> }</tbody></table></div></section>
+@code { private List<Certificate> certificates = []; private List<CertificateLog> logs = []; protected override async Task OnInitializedAsync() => certificates = await Certificates.ListAsync(); private async Task SelectAsync(ChangeEventArgs e) { if (int.TryParse(e.Value?.ToString(), out var id)) logs = await Certificates.LogsAsync(id); } }

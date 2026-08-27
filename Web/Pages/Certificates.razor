@@ -1,0 +1,8 @@
+@page "/certificates"
+@attribute [Authorize]
+@inject CertificateService Service
+
+<PageTitle>证书管理</PageTitle>
+<div class="page-heading"><div><p class="eyebrow">证书服务</p><h2>证书管理</h2><p class="subtitle">查看证书状态、下载文件或手动发起续期</p></div></div>
+<section class="panel"><div class="table-wrap"><table><thead><tr><th>域名</th><th>状态</th><th>签发时间</th><th>过期时间</th><th>剩余天数</th><th>自动续期</th><th>证书文件</th><th>操作</th></tr></thead><tbody>@foreach (var c in items) { <tr><td>@c.PrimaryDomain</td><td>@c.Status</td><td>@c.IssuedAt?.ToLocalTime().ToString("yyyy-MM-dd")</td><td>@c.ExpiresAt?.ToLocalTime().ToString("yyyy-MM-dd")</td><td>@(c.ExpiresAt is null ? "-" : Math.Max(0, (c.ExpiresAt.Value - DateTime.UtcNow).Days))</td><td>@(c.AutoRenew ? "是" : "否")</td><td>@if (c.Status == CertificateStatus.Issued) { <a href="/api/certificates/@c.Id/download/cert">证书</a><a href="/api/certificates/@c.Id/download/fullchain">完整链</a><a href="/api/certificates/@c.Id/download/privkey">私钥</a> }</td><td><button @onclick="() => RenewAsync(c.DomainId)">立即续期</button></td></tr> }</tbody></table></div></section>@if (!string.IsNullOrEmpty(message)) { <p class="notice">@message</p> }
+@code { private List<Certificate> items = []; private string? message; protected override async Task OnInitializedAsync() => items = await Service.ListAsync(); private async Task RenewAsync(int domainId) { try { await Service.RequestAsync(domainId, true); message = "续期成功"; items = await Service.ListAsync(); } catch (Exception ex) { message = ex.Message; } } }
