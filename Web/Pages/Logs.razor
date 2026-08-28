@@ -2,16 +2,22 @@
 @attribute [Authorize]
 @inject CertificateService Certificates
 @inject NavigationManager Navigation
+@inject IJSRuntime JS
 @implements IAsyncDisposable
 
 <PageTitle>申请日志</PageTitle>
-<div class="page-heading"><div><p class="eyebrow">操作记录</p><h2>申请日志</h2><p class="subtitle">按证书查看申请与续期过程中的状态变化</p></div></div>
-<section class="panel"><div class="panel-heading"><div><h3>选择证书</h3><p>选择后加载对应的操作记录，页面会每 3 秒自动刷新</p></div><button @onclick="RefreshAsync" disabled="@(selectedCertificateId is null)">刷新</button></div><div style="padding: 0 20px 20px"><select aria-label="选择证书" value="@selectedCertificateId" @onchange="SelectAsync"><option value="">请选择证书</option>@foreach (var c in certificates) { <option value="@c.Id">@c.PrimaryDomain</option> }</select></div><div class="table-wrap"><table><thead><tr><th>时间</th><th>状态</th><th>消息</th></tr></thead><tbody>@foreach (var l in logs) { <tr><td>@l.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td>@l.Status</td><td>@l.Message</td></tr> }</tbody></table></div></section>
+<div class="page-heading"><div><h2>申请日志</h2><p class="subtitle">按证书查看申请与续期过程中的状态变化</p></div></div>
+<section class="panel"><div class="panel-heading"><div><h3>选择证书</h3><p>选择后加载对应的操作记录，页面会每 3 秒自动刷新</p></div><button @onclick="RefreshAsync" disabled="@(selectedCertificateId is null)">刷新</button></div><div style="padding: 0 20px 20px"><select aria-label="选择证书" value="@selectedCertificateId" @onchange="SelectAsync"><option value="">请选择证书</option>@foreach (var c in certificates) { <option value="@c.Id">@c.PrimaryDomain</option> }</select></div><div class="log-scroll log-scroll-page" @ref="scrollContainer"><table class="log-table"><thead><tr><th class="log-time">时间</th><th class="log-status">状态</th><th>消息</th></tr></thead><tbody>@foreach (var l in logs) { <tr><td class="log-time">@l.CreatedAt.ToLocalTime().ToString("yyyy-MM-dd HH:mm:ss")</td><td class="log-status">@l.Status</td><td class="log-message">@l.Message</td></tr> }</tbody></table>@if (isLoadingMore) { <p class="log-loading">正在加载…</p> } else if (!hasMore && logs.Count > 0) { <p class="log-loading">已加载全部记录</p> }</div></section>
 @code {
     private List<Certificate> certificates = [];
     private List<CertificateLog> logs = [];
     private int? selectedCertificateId;
     private CancellationTokenSource? refreshCancellation;
+    private ElementReference scrollContainer;
+    private DotNetObjectReference<Logs>? dotNetReference;
+    private bool hasMore;
+    private bool isLoadingMore;
+    private bool scrollObserved;
 
     protected override async Task OnInitializedAsync()
     {
@@ -21,7 +27,7 @@
         if (int.TryParse(value, out var id) && certificates.Any(x => x.Id == id))
         {
             selectedCertificateId = id;
-            logs = await Certificates.LogsAsync(id);
+            await LoadFirstPageAsync(id);
             refreshCancellation = new CancellationTokenSource();
             _ = RefreshLogsAsync(id, refreshCancellation.Token);
         }
@@ -31,17 +37,18 @@
     {
         StopAutoRefresh();
         logs = [];
+        hasMore = false;
         selectedCertificateId = int.TryParse(e.Value?.ToString(), out var id) ? id : null;
         if (selectedCertificateId is null) return;
 
-        await RefreshAsync();
+        await LoadFirstPageAsync(selectedCertificateId.Value);
         refreshCancellation = new CancellationTokenSource();
         _ = RefreshLogsAsync(selectedCertificateId.Value, refreshCancellation.Token);
     }
 
     private async Task RefreshAsync()
     {
-        if (selectedCertificateId is int id) logs = await Certificates.LogsAsync(id);
+        if (selectedCertificateId is int id) await LoadFirstPageAsync(id);
     }
 
     private async Task RefreshLogsAsync(int certificateId, CancellationToken cancellationToken)
@@ -52,13 +59,15 @@
             while (await timer.WaitForNextTickAsync(cancellationToken))
             {
                 if (selectedCertificateId != certificateId) return;
-                var refreshedLogs = await Certificates.LogsAsync(certificateId, cancellationToken);
+                var refreshedLogs = await Certificates.LogsAsync(certificateId, take: 30, cancellationToken: cancellationToken);
                 if (selectedCertificateId != certificateId) return;
                 await InvokeAsync(() =>
                 {
                     if (selectedCertificateId == certificateId)
                     {
-                        logs = refreshedLogs;
+                        var olderLogs = logs.Where(x => refreshedLogs.All(y => y.Id != x.Id));
+                        logs = refreshedLogs.Concat(olderLogs).OrderByDescending(x => x.Id).ToList();
+                        hasMore = refreshedLogs.Count == 30 || logs.Count > refreshedLogs.Count;
                         StateHasChanged();
                     }
                 });
@@ -74,9 +83,43 @@
         refreshCancellation = null;
     }
 
-    public ValueTask DisposeAsync()
+    private async Task LoadFirstPageAsync(int certificateId)
+    {
+        logs = await Certificates.LogsAsync(certificateId, take: 30);
+        hasMore = logs.Count == 30;
+    }
+
+    [JSInvokable]
+    public async Task LoadMoreAsync()
+    {
+        if (isLoadingMore || !hasMore || selectedCertificateId is null || logs.Count == 0) return;
+        isLoadingMore = true;
+        try
+        {
+            var more = await Certificates.LogsAsync(selectedCertificateId.Value, logs[^1].Id, 30);
+            logs.AddRange(more);
+            hasMore = more.Count == 30;
+        }
+        finally
+        {
+            isLoadingMore = false;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (!scrollObserved)
+        {
+            dotNetReference = DotNetObjectReference.Create(this);
+            await JS.InvokeVoidAsync("certManagement.observeScroll", scrollContainer, dotNetReference);
+            scrollObserved = true;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
     {
         StopAutoRefresh();
-        return ValueTask.CompletedTask;
+        if (scrollObserved) await JS.InvokeVoidAsync("certManagement.unobserveScroll", scrollContainer);
+        dotNetReference?.Dispose();
     }
 }

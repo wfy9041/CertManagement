@@ -9,6 +9,11 @@ public sealed class AcmeOptions
     public string CertificateDirectory { get; set; } = "data/certificates";
     public int DnsPropagationTimeoutSeconds { get; set; } = 180;
     public int DnsPollingIntervalSeconds { get; set; } = 5;
+    public List<string> DnsQueryEndpoints { get; set; } =
+    [
+        "https://dns.alidns.com/resolve",
+        "https://doh.pub/dns-query"
+    ];
 }
 
 public sealed class RenewalOptions

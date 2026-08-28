@@ -11,13 +11,13 @@ public sealed class DomainService(IDbContextFactory<CertificateDbContext> dbFact
     public async Task<List<DomainEntity>> ListAsync(CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await db.Domains.Include(x => x.DnsProviderAccount).OrderBy(x => x.PrimaryDomain).ToListAsync(cancellationToken);
+        return await db.Domains.Include(x => x.DnsProviderAccount).Include(x => x.DeploymentTargets).OrderBy(x => x.PrimaryDomain).ToListAsync(cancellationToken);
     }
 
     public async Task<DomainEntity?> GetAsync(int id, CancellationToken cancellationToken = default)
     {
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
-        return await db.Domains.Include(x => x.DnsProviderAccount).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
+        return await db.Domains.Include(x => x.DnsProviderAccount).Include(x => x.DeploymentTargets).SingleOrDefaultAsync(x => x.Id == id, cancellationToken);
     }
 
     public async Task<DomainEntity> SaveAsync(DomainEntity input, CancellationToken cancellationToken = default)

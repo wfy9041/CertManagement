@@ -24,3 +24,6 @@ public enum DnsProviderType
     Cloudflare = 1,
     Aliyun = 2
 }
+
+public enum WafDeploymentStatus { Pending, Running, Succeeded, Failed }
+public enum DeploymentTargetType { Waf = 1 }

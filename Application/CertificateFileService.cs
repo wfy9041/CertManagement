@@ -1,3 +1,4 @@
+using System.IO.Compression;
 using System.Security.Cryptography.X509Certificates;
 using CertManagement.Domain;
 using CertManagement.Infrastructure;
@@ -29,9 +30,35 @@ public sealed class CertificateFileService(IWebHostEnvironment environment, IDbC
         var certificate = await db.Certificates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == certificateId, cancellationToken) ?? throw new KeyNotFoundException("证书不存在。");
         var relative = kind switch { "cert" => certificate.CertificatePath, "chain" => certificate.ChainPath, "fullchain" => certificate.FullChainPath, "privkey" => certificate.PrivateKeyPath, _ => null };
         if (relative is null) throw new FileNotFoundException("证书文件不存在。");
-        var path = Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
-        if (!path.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("非法证书路径。");
+        var path = GetSafePath(relative);
         return (await File.ReadAllTextAsync(path, cancellationToken), DownloadName(certificate.PrimaryDomain, certificate.IssuedAt, kind, ".pem"), "application/x-pem-file");
+    }
+
+    public async Task<(byte[] Content, string FileName)> CreateBundleAsync(int certificateId, CancellationToken cancellationToken)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var certificate = await db.Certificates.AsNoTracking().SingleOrDefaultAsync(x => x.Id == certificateId, cancellationToken) ?? throw new KeyNotFoundException("证书不存在。");
+        var files = new[]
+        {
+            (Name: "cert.pem", RelativePath: certificate.CertificatePath),
+            (Name: "chain.pem", RelativePath: certificate.ChainPath),
+            (Name: "fullchain.pem", RelativePath: certificate.FullChainPath),
+            (Name: "privkey.pem", RelativePath: certificate.PrivateKeyPath)
+        };
+
+        await using var output = new MemoryStream();
+        using (var archive = new ZipArchive(output, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var file in files)
+            {
+                if (file.RelativePath is null) throw new FileNotFoundException("证书文件不存在。", file.Name);
+                await using var sourceStream = File.OpenRead(GetSafePath(file.RelativePath));
+                await using var entryStream = archive.CreateEntry(file.Name, CompressionLevel.Optimal).Open();
+                await sourceStream.CopyToAsync(entryStream, cancellationToken);
+            }
+        }
+
+        return (output.ToArray(), DownloadName(certificate.PrimaryDomain, certificate.IssuedAt, string.Empty, ".zip"));
     }
 
     public async Task<(byte[] Content, string FileName)> CreatePfxAsync(int certificateId, string password, CancellationToken cancellationToken)
@@ -50,8 +77,15 @@ public sealed class CertificateFileService(IWebHostEnvironment environment, IDbC
         var safeDomain = string.IsNullOrWhiteSpace(domain) ? "certificate" : domain.Replace("*.", "wildcard.", StringComparison.Ordinal);
         foreach (var invalid in Path.GetInvalidFileNameChars()) safeDomain = safeDomain.Replace(invalid, '_');
         var date = (issuedAt ?? DateTime.UtcNow).ToLocalTime().ToString("yyyyMMdd", System.Globalization.CultureInfo.InvariantCulture);
-        return $"{safeDomain}_{date}_{kind}{extension}";
+        return string.IsNullOrEmpty(kind) ? $"{safeDomain}_{date}{extension}" : $"{safeDomain}_{date}_{kind}{extension}";
     }
 
     private string Relative(string path) => Path.GetRelativePath(environment.ContentRootPath, path);
+
+    private string GetSafePath(string relative)
+    {
+        var path = Path.GetFullPath(Path.Combine(environment.ContentRootPath, relative));
+        if (!path.StartsWith(Root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase)) throw new UnauthorizedAccessException("非法证书路径。");
+        return path;
+    }
 }

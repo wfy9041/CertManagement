@@ -7,7 +7,7 @@
 - 域名 CRUD、启用/禁用、SAN、HTTP-01/DNS-01 选择和通配符约束。
 - Let's Encrypt Staging/Production 配置、ACME Account Key 本地保存、Certes 申请流程。
 - HTTP-01 `/.well-known/acme-challenge/{token}` 并发临时存储。
-- Cloudflare 与阿里云 DNS Provider 抽象、Data Protection 加密密钥、TXT 传播轮询。
+- Cloudflare 与阿里云 DNS Provider 抽象、Data Protection 加密密钥、支持多个公共 DNS 查询端点回退的 TXT 传播轮询。
 - 证书状态机、PEM 文件输出、受保护的 PEM/PFX 下载接口。
 - BackgroundService 自动扫描 30 天内到期证书，重试并使用数据库状态条件更新防止并发续期。
 - NLog 控制台和按日期滚动文件日志；日志不写入私钥、Provider 密钥或 ACME Account Key。
@@ -26,6 +26,47 @@ dotnet run --no-launch-profile
 ```
 
 应用启动时会执行 `Database.MigrateAsync()`，SQLite 文件位于 `data/certmanager.db`。证书目录是 `data/certificates`，日志目录是 `data/logs`，均不在 WebRoot 下。
+
+## 1Panel / Docker 部署
+
+不要只把发布文件复制到容器内运行；容器重建后容器内的 `data` 会随容器丢失。仓库提供的 `Dockerfile` 和 `docker-compose.yml` 会将宿主机的 `./data` 挂载到容器 `/app/data`：
+
+```bash
+docker compose up -d --build
+```
+
+在 1Panel 的容器编排中也应保留以下挂载：
+
+```yaml
+volumes:
+  - /宿主机/固定目录/cert-management-data:/app/data
+```
+
+其中 `/app/data` 必须同时保存 `certmanager.db`、`certificates`、`acme`、`logs` 和 `keys`。如果使用 1Panel 的.NET运行环境而不是 Docker 编排，请把应用目录下的 `data` 配置为持久化目录，并在应用重建/更新时不要清空该目录。
+
+## Windows 服务部署
+
+项目支持作为 Windows Service 运行。建议将发布目录放在 `C:\CertManagement`，并确保服务账户对该目录具有读写权限，因为数据库、证书、ACME 账户密钥和日志都位于发布目录下的 `data` 文件夹。
+
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained false -o C:\CertManagement
+sc.exe create CertManagement binPath= '"C:\Program Files\dotnet\dotnet.exe" "C:\CertManagement\CertManagement.dll"' start= auto DisplayName= "Certificate Management"
+sc.exe description CertManagement "Certificate Management ASP.NET Core service"
+sc.exe start CertManagement
+```
+
+停止或卸载服务：
+
+```powershell
+sc.exe stop CertManagement
+sc.exe delete CertManagement
+```
+
+如果服务器没有安装 .NET 8 Runtime，可发布为自包含程序，然后将 `binPath` 改为 `C:\CertManagement\CertManagement.exe`：
+
+```powershell
+dotnet publish -c Release -r win-x64 --self-contained true -o C:\CertManagement
+```
 
 ## 使用顺序
 

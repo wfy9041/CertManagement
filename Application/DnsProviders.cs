@@ -52,6 +52,15 @@ public sealed class DnsProviderService(IDbContextFactory<CertificateDbContext> d
 		try { return await factory.Create(account).TestConnectionAsync(cancellationToken); } catch (Exception ex) { logger.LogWarning("DNS Provider {ProviderId} 连接测试失败：{Error}", id, SafeError(ex)); return false; }
 	}
 
+	public async Task SetEnabledAsync(int id, bool enabled, CancellationToken cancellationToken = default)
+	{
+		await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+		var account = await db.DnsProviderAccounts.FindAsync([id], cancellationToken) ?? throw new KeyNotFoundException("DNS Provider 不存在。");
+		account.Enabled = enabled;
+		account.UpdatedAt = DateTime.UtcNow;
+		await db.SaveChangesAsync(cancellationToken);
+	}
+
 	private static string SafeError(Exception ex) => ex.Message.Length > 500 ? ex.Message[..500] : ex.Message;
 }
 

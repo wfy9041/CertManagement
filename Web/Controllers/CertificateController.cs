@@ -23,6 +23,13 @@ public sealed class CertificateController(CertificateService certificateService,
         return File(System.Text.Encoding.UTF8.GetBytes(file.Content), file.ContentType, file.FileName);
     }
 
+    [HttpGet("{id:int}/download/bundle")]
+    public async Task<IActionResult> DownloadBundle(int id, CancellationToken cancellationToken)
+    {
+        var file = await fileService.CreateBundleAsync(id, cancellationToken);
+        return File(file.Content, "application/zip", file.FileName);
+    }
+
     [HttpPost("{id:int}/download/pfx")]
     public async Task<IActionResult> DownloadPfx(int id, [FromBody] PfxRequest request, CancellationToken cancellationToken)
     {

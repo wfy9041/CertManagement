@@ -13,3 +13,4 @@ data/*.db-wal
 data/acme/
 data/certificates/
 logs/
+/data/keys
