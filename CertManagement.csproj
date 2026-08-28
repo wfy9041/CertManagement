@@ -7,6 +7,12 @@
 	<SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="data\keys\**" />
+    <Content Remove="data\keys\**" />
+    <EmbeddedResource Remove="data\keys\**" />
+    <None Remove="data\keys\**" />
+  </ItemGroup>
+  <ItemGroup>
     <PackageReference Include="Certes" Version="3.0.4" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="8.0.8" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.8"><PrivateAssets>all</PrivateAssets><IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets></PackageReference>

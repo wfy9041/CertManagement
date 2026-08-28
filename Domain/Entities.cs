@@ -1,12 +1,259 @@
 using System.ComponentModel.DataAnnotations.Schema;
+
 namespace CertManagement.Domain;
 
-public sealed class AdminCredential { public int Id { get; set; } public string Username { get; set; } = string.Empty; public string PasswordHash { get; set; } = string.Empty; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; }
-public sealed class AcmeAccount { public int Id { get; set; } public string Environment { get; set; } = "Staging"; public string Email { get; set; } = string.Empty; public string AccountUrl { get; set; } = string.Empty; public string ProtectedPrivateKey { get; set; } = string.Empty; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; }
-public sealed class DnsProviderAccount { public int Id { get; set; } public string Name { get; set; } = string.Empty; public DnsProviderType Type { get; set; } public string ProtectedApiKeyOrToken { get; set; } = string.Empty; public string ProtectedSecret { get; set; } = string.Empty; public bool Enabled { get; set; } = true; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public ICollection<Domain> Domains { get; set; } = new List<Domain>(); }
-public sealed class Domain { public int Id { get; set; } public string PrimaryDomain { get; set; } = string.Empty; public string Sans { get; set; } = string.Empty; public ChallengeType ChallengeType { get; set; } = ChallengeType.Http01; public int? DnsProviderAccountId { get; set; } public DnsProviderAccount? DnsProviderAccount { get; set; } public bool Enabled { get; set; } = true; public bool AutoRenew { get; set; } = true; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public ICollection<Certificate> Certificates { get; set; } = new List<Certificate>(); public ICollection<DeploymentTarget> DeploymentTargets { get; set; } = new List<DeploymentTarget>(); }
-public sealed class Certificate { public int Id { get; set; } public int DomainId { get; set; } public Domain Domain { get; set; } = null!; public string PrimaryDomain { get; set; } = string.Empty; public string Sans { get; set; } = string.Empty; public DateTime? IssuedAt { get; set; } public DateTime? ExpiresAt { get; set; } public DateTime? LastRenewAt { get; set; } public DateTime? NextRenewAt { get; set; } public CertificateStatus Status { get; set; } = CertificateStatus.Pending; public bool AutoRenew { get; set; } = true; public string? CertificatePath { get; set; } public string? PrivateKeyPath { get; set; } public string? FullChainPath { get; set; } public string? ChainPath { get; set; } public string? ErrorMessage { get; set; } public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public byte[] RowVersion { get; set; } = []; public string? RenewalLockId { get; set; } public DateTime? RenewalLockExpiresAt { get; set; } public ICollection<CertificateOrder> Orders { get; set; } = new List<CertificateOrder>(); public ICollection<CertificateLog> Logs { get; set; } = new List<CertificateLog>(); public ICollection<CertificateDeployment> Deployments { get; set; } = new List<CertificateDeployment>(); }
-public sealed class DeploymentTarget { public int Id { get; set; } public int DomainId { get; set; } public Domain Domain { get; set; } = null!; public DeploymentTargetType Type { get; set; } = DeploymentTargetType.Waf; public string Name { get; set; } = string.Empty; public string AccessKeyId { get; set; } = string.Empty; public string ProtectedAccessKeySecret { get; set; } = string.Empty; public string InstanceId { get; set; } = string.Empty; public string Endpoint { get; set; } = "wafopenapi.cn-hangzhou.aliyuncs.com"; public string TargetDomain { get; set; } = string.Empty; [NotMapped] public string WafDomain { get => TargetDomain; set => TargetDomain = value; } public bool Enabled { get; set; } = true; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public ICollection<CertificateDeployment> Deployments { get; set; } = new List<CertificateDeployment>(); }
-public sealed class CertificateDeployment { public int Id { get; set; } public int CertificateId { get; set; } public Certificate Certificate { get; set; } = null!; public int DeploymentTargetId { get; set; } public DeploymentTarget DeploymentTarget { get; set; } = null!; public string TargetDomain { get; set; } = string.Empty; public long? ProviderCertificateId { get; set; } public WafDeploymentStatus Status { get; set; } = WafDeploymentStatus.Pending; public string? RequestId { get; set; } public string? ErrorMessage { get; set; } public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime? CompletedAt { get; set; } [NotMapped] public int WafDeploymentTargetId { get => DeploymentTargetId; set => DeploymentTargetId = value; } [NotMapped] public DeploymentTarget WafDeploymentTarget { get => DeploymentTarget; set => DeploymentTarget = value; } [NotMapped] public string WafDomain { get => TargetDomain; set => TargetDomain = value; } [NotMapped] public long? WafCertificateId { get => ProviderCertificateId; set => ProviderCertificateId = value; } }
-public sealed class CertificateOrder { public int Id { get; set; } public int CertificateId { get; set; } public Certificate Certificate { get; set; } = null!; public string OrderUrl { get; set; } = string.Empty; public string? AuthorizationData { get; set; } public string? ErrorMessage { get; set; } public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime? CompletedAt { get; set; } }
-public sealed class CertificateLog { public int Id { get; set; } public int CertificateId { get; set; } public Certificate Certificate { get; set; } = null!; public CertificateStatus Status { get; set; } public string Message { get; set; } = string.Empty; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; }
+public sealed class AdminCredential
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public string Username { get; set; } = string.Empty; public string PasswordHash { get; set; } = string.Empty; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class AcmeAccount
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public string Environment { get; set; } = "Staging"; public string Email { get; set; } = string.Empty; public string AccountUrl { get; set; } = string.Empty; public string ProtectedPrivateKey { get; set; } = string.Empty; public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}
+
+public sealed class DnsProviderAccount
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public string Name { get; set; } = string.Empty; public DnsProviderType Type
+	{
+		get; set;
+	}
+
+	public string ProtectedApiKeyOrToken { get; set; } = string.Empty; public string ProtectedSecret { get; set; } = string.Empty; public bool Enabled { get; set; } = true; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public ICollection<Domain> Domains { get; set; } = new List<Domain>();
+}
+
+public sealed class Domain
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public string PrimaryDomain { get; set; } = string.Empty; public string Sans { get; set; } = string.Empty; public ChallengeType ChallengeType { get; set; } = ChallengeType.Http01; public int? DnsProviderAccountId
+	{
+		get; set;
+	}
+
+	public DnsProviderAccount? DnsProviderAccount
+	{
+		get; set;
+	}
+
+	public bool Enabled { get; set; } = true; public bool AutoRenew { get; set; } = true; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public ICollection<Certificate> Certificates { get; set; } = new List<Certificate>(); public ICollection<DeploymentTarget> DeploymentTargets { get; set; } = new List<DeploymentTarget>();
+}
+
+public sealed class Certificate
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public int DomainId
+	{
+		get; set;
+	}
+
+	public Domain Domain { get; set; } = null!; public string PrimaryDomain { get; set; } = string.Empty; public string Sans { get; set; } = string.Empty; public DateTime? IssuedAt
+	{
+		get; set;
+	}
+
+	public DateTime? ExpiresAt
+	{
+		get; set;
+	}
+
+	public DateTime? LastRenewAt
+	{
+		get; set;
+	}
+
+	public DateTime? NextRenewAt
+	{
+		get; set;
+	}
+
+	public CertificateStatus Status { get; set; } = CertificateStatus.Pending; public bool AutoRenew { get; set; } = true; public string? CertificatePath
+	{
+		get; set;
+	}
+
+	public string? PrivateKeyPath
+	{
+		get; set;
+	}
+
+	public string? FullChainPath
+	{
+		get; set;
+	}
+
+	public string? ChainPath
+	{
+		get; set;
+	}
+
+	public string? ErrorMessage
+	{
+		get; set;
+	}
+
+	public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public byte[] RowVersion { get; set; } = []; public string? RenewalLockId
+	{
+		get; set;
+	}
+
+	public DateTime? RenewalLockExpiresAt
+	{
+		get; set;
+	}
+
+	public ICollection<CertificateOrder> Orders { get; set; } = new List<CertificateOrder>(); public ICollection<CertificateLog> Logs { get; set; } = new List<CertificateLog>(); public ICollection<CertificateDeployment> Deployments { get; set; } = new List<CertificateDeployment>();
+}
+
+public sealed class DeploymentTarget
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public int DomainId
+	{
+		get; set;
+	}
+
+	public Domain Domain { get; set; } = null!; public DeploymentTargetType Type { get; set; } = DeploymentTargetType.Waf; public string Name { get; set; } = string.Empty; public string AccessKeyId { get; set; } = string.Empty; public string ProtectedAccessKeySecret { get; set; } = string.Empty; public string InstanceId { get; set; } = string.Empty; public string Endpoint { get; set; } = "wafopenapi.cn-hangzhou.aliyuncs.com"; public string TargetDomain { get; set; } = string.Empty; [NotMapped]
+	public string WafDomain
+	{
+		get => TargetDomain; set => TargetDomain = value;
+	}
+
+	public bool Enabled { get; set; } = true; public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime UpdatedAt { get; set; } = DateTime.UtcNow; public ICollection<CertificateDeployment> Deployments { get; set; } = new List<CertificateDeployment>();
+}
+
+public sealed class CertificateDeployment
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public int CertificateId
+	{
+		get; set;
+	}
+
+	public Certificate Certificate { get; set; } = null!; public int DeploymentTargetId
+	{
+		get; set;
+	}
+
+	public DeploymentTarget DeploymentTarget { get; set; } = null!; public string TargetDomain { get; set; } = string.Empty; public long? ProviderCertificateId
+	{
+		get; set;
+	}
+
+	public WafDeploymentStatus Status { get; set; } = WafDeploymentStatus.Pending; public string? RequestId
+	{
+		get; set;
+	}
+
+	public string? ErrorMessage
+	{
+		get; set;
+	}
+
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime? CompletedAt
+	{
+		get; set;
+	}
+
+	[NotMapped]
+	public int WafDeploymentTargetId
+	{
+		get => DeploymentTargetId; set => DeploymentTargetId = value;
+	}
+
+	[NotMapped]
+	public DeploymentTarget WafDeploymentTarget
+	{
+		get => DeploymentTarget; set => DeploymentTarget = value;
+	}
+
+	[NotMapped]
+	public string WafDomain
+	{
+		get => TargetDomain; set => TargetDomain = value;
+	}
+
+	[NotMapped]
+	public long? WafCertificateId
+	{
+		get => ProviderCertificateId; set => ProviderCertificateId = value;
+	}
+}
+
+public sealed class CertificateOrder
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public int CertificateId
+	{
+		get; set;
+	}
+
+	public Certificate Certificate { get; set; } = null!; public string OrderUrl { get; set; } = string.Empty; public string? AuthorizationData
+	{
+		get; set;
+	}
+
+	public string? ErrorMessage
+	{
+		get; set;
+	}
+
+	public DateTime CreatedAt { get; set; } = DateTime.UtcNow; public DateTime? CompletedAt
+	{
+		get; set;
+	}
+}
+
+public sealed class CertificateLog
+{
+	public int Id
+	{
+		get; set;
+	}
+
+	public int CertificateId
+	{
+		get; set;
+	}
+
+	public Certificate Certificate { get; set; } = null!; public CertificateStatus Status
+	{
+		get; set;
+	}
+
+	public string Message { get; set; } = string.Empty; public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+}

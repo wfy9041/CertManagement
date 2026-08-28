@@ -10,8 +10,16 @@ namespace CertManagement.Web.Controllers;
 [Route("api/domains")]
 public sealed class DomainController(DomainService service) : ControllerBase
 {
-    [HttpGet] public async Task<ActionResult<List<DomainEntity>>> List(CancellationToken cancellationToken) => await service.ListAsync(cancellationToken);
-    [HttpPost] public async Task<ActionResult<DomainEntity>> Save([FromBody] DomainEntity model, CancellationToken cancellationToken) => Ok(await service.SaveAsync(model, cancellationToken));
-    [HttpPatch("{id:int}/enabled")] public async Task<IActionResult> Enabled(int id, [FromBody] EnabledRequest request, CancellationToken cancellationToken) { await service.SetEnabledAsync(id, request.Enabled, cancellationToken); return NoContent(); }
-    public sealed record EnabledRequest(bool Enabled);
+	[HttpGet] public async Task<ActionResult<List<DomainEntity>>> List(CancellationToken cancellationToken) => await service.ListAsync(cancellationToken);
+
+	[HttpPost] public async Task<ActionResult<DomainEntity>> Save([FromBody] DomainEntity model, CancellationToken cancellationToken) => Ok(await service.SaveAsync(model, cancellationToken));
+
+	[HttpPatch("{id:int}/enabled")]
+	public async Task<IActionResult> Enabled(int id, [FromBody] EnabledRequest request, CancellationToken cancellationToken)
+	{
+		await service.SetEnabledAsync(id, request.Enabled, cancellationToken);
+		return NoContent();
+	}
+
+	public sealed record EnabledRequest(bool Enabled);
 }
