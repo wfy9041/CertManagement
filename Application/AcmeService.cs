@@ -13,7 +13,10 @@ namespace CertManagement.Application;
 
 public sealed class CertificateService(IDbContextFactory<CertificateDbContext> dbFactory, IHostEnvironment environment, IOptions<AcmeOptions> options, IDnsProviderFactory dnsFactory, ChallengeStore challenges, CertificateFileService files, WafDeploymentService waf, ILogger<CertificateService> logger)
 {
+	private static readonly System.Collections.Concurrent.ConcurrentDictionary<int, SemaphoreSlim> OperationLocks = new();
 	private readonly AcmeOptions _options = options.Value;
+
+	internal static SemaphoreSlim OperationLock(int id) => OperationLocks.GetOrAdd(id, _ => new SemaphoreSlim(1, 1));
 
 	public async Task<Certificate> RequestAsync(int domainId, bool renewal = false, CancellationToken cancellationToken = default)
 	{
@@ -24,6 +27,7 @@ public sealed class CertificateService(IDbContextFactory<CertificateDbContext> d
 	public async Task<Certificate> StartAsync(int domainId, bool renewal = false, CancellationToken cancellationToken = default)
 	{
 		await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+		await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
 		var domain = await db.Domains.Include(x => x.DnsProviderAccount).SingleOrDefaultAsync(x => x.Id == domainId, cancellationToken) ?? throw new KeyNotFoundException("域名不存在。");
 		var names = DomainService.Names(domain);
 		if (!domain.Enabled && !renewal)
@@ -35,6 +39,8 @@ public sealed class CertificateService(IDbContextFactory<CertificateDbContext> d
 		var cert = await db.Certificates.Where(x => x.DomainId == domainId).OrderByDescending(x => x.Id).FirstOrDefaultAsync(cancellationToken);
 		if (cert is null)
 		{
+			if (renewal)
+				throw new InvalidOperationException("该域名没有已签发的证书，请先申请。");
 			cert = new Certificate { DomainId = domainId, PrimaryDomain = domain.PrimaryDomain, Sans = domain.Sans, AutoRenew = domain.AutoRenew };
 			db.Certificates.Add(cert);
 			await db.SaveChangesAsync(cancellationToken);
@@ -54,6 +60,7 @@ public sealed class CertificateService(IDbContextFactory<CertificateDbContext> d
 				throw new InvalidOperationException($"证书当前状态为“{StatusName(currentStatus)}”，仅已签发的证书可以立即续期。");
 			throw new InvalidOperationException($"证书当前状态为“{StatusName(currentStatus)}”，不能发起申请。");
 		}
+		await transaction.CommitAsync(cancellationToken);
 		await LogAsync(cert.Id, busy, renewal ? "自动续期开始" : "申请开始", cancellationToken);
 		return cert;
 	}
@@ -61,6 +68,14 @@ public sealed class CertificateService(IDbContextFactory<CertificateDbContext> d
 	public Task ProcessRequestAsync(int certificateId, bool renewal, CancellationToken cancellationToken = default) => ProcessAsync(certificateId, renewal, cancellationToken);
 
 	private async Task<Certificate> ProcessAsync(int certificateId, bool renewal, CancellationToken cancellationToken)
+	{
+		var gate = OperationLock(certificateId);
+		await gate.WaitAsync(cancellationToken);
+		try { return await ProcessCoreAsync(certificateId, renewal, cancellationToken); }
+		finally { gate.Release(); }
+	}
+
+	private async Task<Certificate> ProcessCoreAsync(int certificateId, bool renewal, CancellationToken cancellationToken)
 	{
 		await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
 		var cert = await db.Certificates.SingleOrDefaultAsync(x => x.Id == certificateId, cancellationToken) ?? throw new KeyNotFoundException("证书不存在。");
@@ -100,10 +115,39 @@ public sealed class CertificateService(IDbContextFactory<CertificateDbContext> d
 			await saveDb.SaveChangesAsync(cancellationToken);
 			await LogAsync(saved.Id, saved.Status, renewal ? "自动续期签发成功" : "证书签发成功", cancellationToken);
 			await LogDnsTxtCleanupAsync(saved.Id, CertificateStatus.Issued, dnsTxtCleanupMessages, cancellationToken);
-			await waf.DeployAsync(saved.Id, ct: cancellationToken);
+			await waf.DeployCoreAsync(saved.Id, ct: cancellationToken);
 			return saved;
 		}
 		catch (Exception ex) { var diagnostic = order is null ? null : await ReadOrderFailureAsync(order); var error = SafeError(string.IsNullOrWhiteSpace(diagnostic) ? ex.Message : $"{ex.Message}；{diagnostic}"); logger.LogError(ex, "证书 {CertificateId} 处理失败：{Error}", cert.Id, error); await FailAsync(cert.Id, error, cancellationToken); await LogDnsTxtCleanupAsync(cert.Id, CertificateStatus.Failed, dnsTxtCleanupMessages, cancellationToken); throw; }
+	}
+
+	public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+	{
+		const string busyMessage = "该证书正在申请、续期或部署，任务结束后才能删除。";
+		var gate = OperationLock(id);
+		if (!await gate.WaitAsync(0, cancellationToken))
+			throw new InvalidOperationException(busyMessage);
+
+		try
+		{
+			await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+			await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+			var certificate = await db.Certificates.FindAsync([id], cancellationToken) ?? throw new KeyNotFoundException("证书不存在。");
+			if (certificate.Status is not (CertificateStatus.Pending or CertificateStatus.Issued or CertificateStatus.Failed))
+				throw new InvalidOperationException(busyMessage);
+
+			var deployments = db.CertificateDeployments.Where(x => x.CertificateId == id);
+			if (await deployments.AnyAsync(x => x.Status == WafDeploymentStatus.Pending || x.Status == WafDeploymentStatus.Running, cancellationToken))
+				throw new InvalidOperationException(busyMessage);
+
+			await deployments.ExecuteDeleteAsync(cancellationToken);
+			await db.CertificateOrders.Where(x => x.CertificateId == id).ExecuteDeleteAsync(cancellationToken);
+			await db.CertificateLogs.Where(x => x.CertificateId == id).ExecuteDeleteAsync(cancellationToken);
+			db.Certificates.Remove(certificate);
+			await db.SaveChangesAsync(cancellationToken);
+			await transaction.CommitAsync(cancellationToken);
+		}
+		finally { gate.Release(); }
 	}
 
 	public async Task<List<Certificate>> ListAsync(CancellationToken cancellationToken = default)

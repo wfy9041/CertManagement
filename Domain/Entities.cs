@@ -129,6 +129,8 @@ public sealed class Certificate
 
 public sealed class DeploymentTarget
 {
+	public string? EsaCertificateId { get; set; }
+
 	public int Id
 	{
 		get; set;
@@ -150,6 +152,8 @@ public sealed class DeploymentTarget
 
 public sealed class CertificateDeployment
 {
+	public string? EsaCertificateId { get; set; }
+
 	public int Id
 	{
 		get; set;

@@ -505,6 +505,16 @@ textarea {
     font-size: 13px;
 }
 
+.notice.success {
+    color: #166534;
+    background: #dcfce7;
+}
+
+.notice.error {
+    color: #991b1b;
+    background: #fee2e2;
+}
+
 .empty-state {
     padding: 42px 20px;
     text-align: center;

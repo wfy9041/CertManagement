@@ -70,6 +70,24 @@ public sealed class DomainService(IDbContextFactory<CertificateDbContext> dbFact
 		await db.SaveChangesAsync(cancellationToken);
 	}
 
+	public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+	{
+		await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+		await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+		var domain = await db.Domains.FindAsync([id], cancellationToken) ?? throw new KeyNotFoundException("域名不存在。");
+		if (await db.Certificates.AnyAsync(x => x.DomainId == id, cancellationToken))
+			throw new InvalidOperationException("请先在证书管理中删除该域名下的所有证书。");
+
+		var targets = db.DeploymentTargets.Where(x => x.DomainId == id);
+		if (await db.CertificateDeployments.AnyAsync(x => targets.Any(t => t.Id == x.DeploymentTargetId), cancellationToken))
+			throw new InvalidOperationException("该域名的部署目标仍被其他证书的部署记录引用，无法删除。");
+
+		await targets.ExecuteDeleteAsync(cancellationToken);
+		db.Domains.Remove(domain);
+		await db.SaveChangesAsync(cancellationToken);
+		await transaction.CommitAsync(cancellationToken);
+	}
+
 	public static List<string> Names(DomainEntity domain) => new[] { domain.PrimaryDomain }
 		.Concat(NormalizeSans(domain.Sans)).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 

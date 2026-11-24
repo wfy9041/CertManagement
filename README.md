@@ -1,19 +1,19 @@
 # 证书管理
 
-基于 .NET 8、ASP.NET Core Blazor Server、Entity Framework Core SQLite 和 Certes 的 Let's Encrypt SSL/TLS 证书管理系统。系统提供域名与 DNS Provider 管理、ACME 证书申请/续期、证书文件下载、申请日志，以及阿里云 WAF 证书部署。
+基于 .NET 8、ASP.NET Core Blazor Server、Entity Framework Core SQLite 和 Certes 的 Let's Encrypt SSL/TLS 证书管理系统。系统提供域名与 DNS Provider 管理、ACME 证书申请/续期、证书文件下载、申请日志，以及阿里云 WAF / ESA 证书部署。
 
 ## 功能概览
 
 - 管理域名、SAN（Subject Alternative Name）、启用状态和自动续期状态。
 - 支持 HTTP-01 和 DNS-01 挑战；通配符域名必须使用 DNS-01。
-- 支持 Cloudflare、阿里云 DNS Provider，可测试连接并自动创建/清理 TXT 记录。
+- 支持 Cloudflare、阿里云 DNS（AliDNS）和阿里云 ESA DNS Provider，可测试连接并自动创建/清理 TXT 记录。
 - 支持 Let's Encrypt Staging 和 Production 环境；ACME Account Key 按环境和邮箱保存。
 - HTTP-01 挑战地址为 `/.well-known/acme-challenge/{token}`，挑战内容使用并发安全的临时存储。
 - DNS-01 会通过多个公共 DNS 查询端点轮询 TXT 记录，直到传播成功或超时。
 - 证书申请状态可追踪为创建订单、创建挑战、等待 DNS、验证、签发、续期或失败等状态。
 - 证书以 PEM 文件保存，支持下载 `cert.pem`、`chain.pem`、`fullchain.pem`、`privkey.pem` 和 ZIP 文件；也支持按请求密码即时生成 PFX。
 - 后台服务按配置周期扫描即将到期的证书，默认提前 30 天续期，并支持失败重试和并发续期保护。
-- 支持配置阿里云 WAF 2.0 部署目标，测试连接、手动部署已签发证书，并查看部署记录。
+- 支持配置阿里云 WAF 2.0 / ESA 部署目标，测试连接、手动部署，并在签发和续签成功后自动部署，保留部署记录。
 - 提供申请日志页面：按证书查看记录、手动刷新、选择证书后每 3 秒自动刷新，并支持滚动加载历史记录。
 - 使用 Cookie 管理员认证保护管理页面和管理 API；系统设置页可查看签发配置并修改管理员密码。
 - 使用 NLog 输出控制台日志和按日期滚动的文件日志，敏感凭据不会写入日志。
@@ -25,8 +25,8 @@
 | 概览 | `/` | 查看系统中的域名和证书概况 |
 | 域名管理 | `/domains` | 新增/修改域名、配置 SAN、挑战类型、DNS Provider、启用和自动续期 |
 | 证书管理 | `/certificates` | 申请、续期、查看状态和下载证书文件 |
-| 部署目标 | `/waf-deployments` | 管理阿里云 WAF 目标、测试连接、手动部署和查看部署记录 |
-| DNS 服务商 | `/dns-providers` | 管理 Cloudflare/阿里云凭据并测试连接 |
+| 部署目标 | `/waf-deployments` | 管理阿里云 WAF / ESA 目标、测试连接、手动部署和查看部署记录 |
+| DNS 服务商 | `/dns-providers` | 管理 Cloudflare/阿里云 DNS/阿里云 ESA 凭据并测试连接 |
 | 申请日志 | `/logs` | 查看证书申请和续期过程中的状态变化 |
 | 系统设置 | `/settings` | 查看 ACME/续期配置及修改管理员密码 |
 
@@ -54,11 +54,37 @@ dotnet run --no-launch-profile
 ### 首次使用顺序
 
 1. 登录管理台，默认用户名由 `Admin:Username` 配置，当前默认值为 `admin`，默认密码为`admin123`。
-2. 在“DNS 服务商”中新增并测试 Cloudflare 或阿里云凭据。
+2. 在“DNS 服务商”中新增并测试 Cloudflare、阿里云 DNS 或阿里云 ESA 凭据。
 3. 在“域名管理”中新增域名，填写 SAN，并选择 HTTP-01 或 DNS-01。DNS-01 需要绑定已启用的 DNS Provider。
 4. 在“证书管理”中提交申请。生产签发前建议先使用 Staging 验证配置和流程。
 5. 证书签发成功后，可在证书详情中下载 PEM、ZIP 或输入一次性密码生成 PFX。
-6. 如需部署到阿里云 WAF，在“部署目标”中配置 WAF 实例，测试连接后手动部署已签发证书。
+6. 如需部署到阿里云 WAF / ESA，在“部署目标”中选择类型并填写配置，测试连接后可手动部署；后续签发、续签成功会自动部署到该域名的已启用目标。
+
+### 阿里云 ESA DNS-01 配置
+
+1. 域名需已通过 NS 托管方式接入 ESA，且站点状态为已激活（`active`）。CNAME 接入站点请配置实际权威 DNS 服务商。
+2. 在“DNS 服务商”中新增凭据，类型选择“阿里云 ESA”，填写 AccessKeyId 和 AccessKeySecret。凭据沿用 Data Protection 加密保存，编辑时留空保持原值。
+3. RAM 凭据需要 `esa:ListSites`、`esa:CreateRecord`、`esa:ListRecords`、`esa:DeleteRecord` 权限；查询和创建记录需授权对应站点资源，其余操作按官方 API 的资源授权要求配置。
+4. 点击“测试连接”检查站点查询接口是否可访问。测试不创建记录，也不验证记录写入权限或某个域名的 NS 生效情况；空站点列表仍表示接口连接成功。
+5. 在“域名管理”中选择 DNS-01，绑定该 ESA 凭据，再申请或续期证书。系统分页查询站点并按最长域名后缀匹配，自动创建完整 `_acme-challenge` TXT 记录，验证后按名称、类型和值精确匹配清理，保留其他 TXT 值。
+
+ESA 使用 API 版本 `2024-09-10`，当前接入点固定为杭州 `esa.cn-hangzhou.aliyuncs.com`，该 DNS 功能不包含新建 ESA 站点；向 ESA 部署证书需另行配置下述部署目标。仅在新建的 TXT 记录能够通过公网权威 DNS 查询时，DNS-01 才能成功。
+
+官方文档：[ListSites](https://www.alibabacloud.com/help/en/edge-security-acceleration/esa/api-esa-2024-09-10-listsites)、[CreateRecord](https://www.alibabacloud.com/help/en/edge-security-acceleration/esa/api-esa-2024-09-10-createrecord)、[ListRecords](https://www.alibabacloud.com/help/en/edge-security-acceleration/esa/api-esa-2024-09-10-listrecords)、[DeleteRecord](https://help.aliyun.com/en/edge-security-acceleration/esa/api-esa-2024-09-10-deleterecord)。
+
+### 阿里云 ESA 证书部署
+
+1. 在“部署目标”中新增目标，类型选择“阿里云 ESA”，选择本系统的所属域名，填写名称、目标域名、AccessKeyId、AccessKeySecret 和 ESA 站点 SiteId。SiteId 在底层沿用 `InstanceId` 字段；目标域名沿用 `TargetDomain` / `WafDomain` 字段，现有 API 路径保持不变。
+2. Endpoint 中国站账号选择杭州 `esa.cn-hangzhou.aliyuncs.com`，国际站账号选择新加坡 `esa.ap-southeast-1.aliyuncs.com`。凭据独立于 DNS 服务商配置，并沿用现有 Data Protection 加密保存；切换至 ESA 或更换 AccessKeyId 时需填写 Secret。
+3. RAM 凭据需要 `esa:GetSite`（对应站点资源）和 `esa:SetCertificate`（按官方要求授权）权限。测试连接仅查询站点，检查站点已激活及目标域名属于该站点，不上传证书，也不证明写入权限。
+4. 对已有已签发证书点击“手动部署”；之后该域名的证书签发、续签成功后会自动部署到已启用的目标。ESA 部署不要求站点使用 NS 接入，也不依赖本系统 ESA DNS 服务商配置。上传前还会检查实际证书的 SAN 是否覆盖目标域名。
+5. 系统调用 `SetCertificate`，以 `upload` 类型通过 POST 表单发送完整 PEM 证书链及私钥，首次保存返回的字符串证书 ID，之后携带该 ID 更新证书。页面可查看已保存 ID 和每次部署的 ID、状态及错误。
+
+更换目标类型、SiteId、AccessKeyId 或 Endpoint 会重置本地 ESA 证书 ID，后续按首次上传处理；不会删除云端旧证书。上传超时或响应丢失时不自动重试；首次上传使用固定的目标证书名称，请先核对 ESA 云端结果，避免不确定状态下重复操作。云端已成功但本地保存失败也需要核对。部署成功表示 ESA 接口已接受，边缘节点实际生效情况需另行检查。
+
+数据库变更：新增迁移 `202611050001_AddEsaDeployment`，仅为部署目标和部署记录各增加可空 `EsaCertificateId` 文本列，保留 WAF 的数字证书 ID。项目启动时现有 `Database.MigrateAsync()` 会自动应用待执行迁移；本次代码修改未执行迁移或启动服务。上线前请备份数据库并确认迁移窗口；此迁移不提供自动删除字段的回退操作。
+
+官方文档：[GetSite](https://help.aliyun.com/en/edge-security-acceleration/esa/api-esa-2024-09-10-getsite)、[SetCertificate](https://help.aliyun.com/en/edge-security-acceleration/esa/api-esa-2024-09-10-setcertificate)。
 
 ## 配置说明
 
@@ -150,16 +176,16 @@ dotnet publish -c Release -r win-x64 --self-contained true -o C:\CertManagement
 | `GET` | `/api/certificates/{id}/download/bundle` | 下载 PEM ZIP 包 |
 | `POST` | `/api/certificates/{id}/download/pfx` | 生成并下载 PFX |
 | `GET/POST` | `/api/dns-providers` | 管理和测试 DNS Provider |
-| `GET/POST` | `/api/waf-deployments/targets` | 管理 WAF 部署目标 |
-| `POST` | `/api/waf-deployments/certificates/{id}/deploy` | 部署证书到 WAF |
+| `GET/POST` | `/api/waf-deployments/targets` | 管理 WAF / ESA 部署目标 |
+| `POST` | `/api/waf-deployments/certificates/{id}/deploy` | 部署证书到已启用的 WAF / ESA 目标 |
 
 HTTP-01 挑战端点 `/.well-known/acme-challenge/{token}` 为 ACME 验证所需的匿名访问端点。证书文件目录不作为静态文件目录直接开放，下载由受保护接口提供。
 
 ## 安全注意事项
 
 - 生产环境必须使用 `Production` 前确认域名、DNS API 权限和续期流程已在 Staging 验证。
-- 不要提交 `appsettings` 中的真实凭据、SQLite 数据库、ACME Account Key、DNS 密钥、WAF Secret 或 `data` 目录。
-- DNS Provider 凭据和 WAF AccessKeySecret 使用 ASP.NET Core Data Protection 保护后保存；请持久化 `data/keys` 并限制其访问权限。
+- 不要提交 `appsettings` 中的真实凭据、SQLite 数据库、ACME Account Key、DNS 密钥、WAF / ESA Secret 或 `data` 目录。
+- DNS Provider 凭据和 WAF / ESA AccessKeySecret 使用 ASP.NET Core Data Protection 保护后保存；请持久化 `data/keys` 并限制其访问权限。
 - PFX 密码只用于当前请求，不落库；私钥下载接口同样受管理员 Cookie 认证保护。
 - 定期备份 `data/certmanager.db`、`data/acme`、`data/certificates` 和 `data/keys`，并安全保存备份。
 
@@ -172,4 +198,4 @@ git diff --check
 dotnet build --no-restore
 ```
 
-真实证书签发、DNS 传播、WAF 部署和公网 HTTP-01 验证需要实际运行环境及对应凭据，不能仅由本地编译结果证明。
+真实证书签发、DNS 传播、WAF / ESA 部署和公网 HTTP-01 验证需要实际运行环境及对应凭据，不能仅由本地编译结果证明。

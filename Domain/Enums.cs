@@ -22,7 +22,8 @@ public enum CertificateStatus
 public enum DnsProviderType
 {
 	Cloudflare = 1,
-	Aliyun = 2
+	Aliyun = 2,
+	AliyunEsa = 3
 }
 
 public enum WafDeploymentStatus
@@ -32,5 +33,6 @@ public enum WafDeploymentStatus
 
 public enum DeploymentTargetType
 {
-	Waf = 1
+	Waf = 1,
+	Esa = 2
 }

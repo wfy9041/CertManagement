@@ -16,5 +16,17 @@ public sealed class DnsProviderController(DnsProviderService service) : Controll
 
 	[HttpPost("{id:int}/test")] public async Task<ActionResult<bool>> Test(int id, CancellationToken cancellationToken) => await service.TestAsync(id, cancellationToken);
 
+	[HttpDelete("{id:int}")]
+	public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+	{
+		try
+		{
+			await service.DeleteAsync(id, cancellationToken);
+			return NoContent();
+		}
+		catch (KeyNotFoundException ex) { return NotFound(ex.Message); }
+		catch (InvalidOperationException ex) { return Conflict(ex.Message); }
+	}
+
 	public sealed record SaveRequest(DnsProviderAccount Model, string ApiKey, string Secret);
 }

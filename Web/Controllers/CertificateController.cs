@@ -15,6 +15,18 @@ public sealed class CertificateController(CertificateService certificateService,
 	[HttpPost("{id:int}/renew")]
 	public async Task<IActionResult> Renew(int id, CancellationToken cancellationToken) => Ok(await certificateService.RequestAsync(id, true, cancellationToken));
 
+	[HttpDelete("{id:int}")]
+	public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+	{
+		try
+		{
+			await certificateService.DeleteAsync(id, cancellationToken);
+			return NoContent();
+		}
+		catch (KeyNotFoundException ex) { return NotFound(ex.Message); }
+		catch (InvalidOperationException ex) { return Conflict(ex.Message); }
+	}
+
 	[HttpGet("{id:int}/download/{kind}")]
 	public async Task<IActionResult> DownloadPem(int id, string kind, CancellationToken cancellationToken)
 	{

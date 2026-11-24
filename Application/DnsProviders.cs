@@ -21,7 +21,7 @@ public interface IDnsProviderFactory
 	IDnsProvider Create(DnsProviderAccount account);
 }
 
-public sealed class DnsProviderFactory(IHttpClientFactory httpClientFactory, IDataProtectionProvider protectionProvider) : IDnsProviderFactory
+public sealed class DnsProviderFactory(IHttpClientFactory httpClientFactory, IDataProtectionProvider protectionProvider, ILogger<AliyunEsaDnsProvider> esaLogger) : IDnsProviderFactory
 {
 	public IDnsProvider Create(DnsProviderAccount account)
 	{
@@ -32,6 +32,7 @@ public sealed class DnsProviderFactory(IHttpClientFactory httpClientFactory, IDa
 		{
 			DnsProviderType.Cloudflare => new CloudflareDnsProvider(httpClientFactory.CreateClient(), apiKey, secret),
 			DnsProviderType.Aliyun => new AliyunDnsProvider(httpClientFactory.CreateClient(), apiKey, secret),
+			DnsProviderType.AliyunEsa => new AliyunEsaDnsProvider(httpClientFactory.CreateClient(), apiKey, secret, account.Id, esaLogger),
 			_ => throw new NotSupportedException($"不支持的 DNS Provider 类型：{account.Type}")
 		};
 	}
@@ -53,7 +54,7 @@ public sealed class DnsProviderService(IDbContextFactory<CertificateDbContext> d
 		return await db.DnsProviderAccounts.FindAsync([id], cancellationToken);
 	}
 
-	public async Task<DnsProviderAccount> SaveAsync(DnsProviderAccount input, string apiKey, string secret, CancellationToken cancellationToken = default)
+	public async Task<DnsProviderAccount> SaveAsync(DnsProviderAccount input, string apiKey, string secret, CancellationToken cancellationToken = default, int credentialSourceId = 0)
 	{
 		if (string.IsNullOrWhiteSpace(input.Name))
 			throw new ArgumentException("Provider 名称不能为空。", nameof(input));
@@ -65,10 +66,22 @@ public sealed class DnsProviderService(IDbContextFactory<CertificateDbContext> d
 		entity.Type = input.Type;
 		entity.Enabled = input.Enabled;
 		entity.UpdatedAt = DateTime.UtcNow;
-		if (!string.IsNullOrWhiteSpace(apiKey))
-			entity.ProtectedApiKeyOrToken = protector.Protect(apiKey.Trim());
-		if (!string.IsNullOrWhiteSpace(secret))
-			entity.ProtectedSecret = protector.Protect(secret);
+		if (credentialSourceId != 0)
+		{
+			var source = await db.DnsProviderAccounts.AsNoTracking().SingleOrDefaultAsync(x =>
+				x.Id == credentialSourceId && x.Type == input.Type &&
+				x.ProtectedApiKeyOrToken != "" && x.ProtectedSecret != "", cancellationToken)
+				?? throw new ArgumentException("所选 DNS 凭据已不可用，请重新选择。");
+			entity.ProtectedApiKeyOrToken = source.ProtectedApiKeyOrToken;
+			entity.ProtectedSecret = source.ProtectedSecret;
+		}
+		else
+		{
+			if (!string.IsNullOrWhiteSpace(apiKey))
+				entity.ProtectedApiKeyOrToken = protector.Protect(apiKey.Trim());
+			if (!string.IsNullOrWhiteSpace(secret))
+				entity.ProtectedSecret = protector.Protect(secret);
+		}
 		await db.SaveChangesAsync(cancellationToken);
 		return entity;
 	}
@@ -90,6 +103,21 @@ public sealed class DnsProviderService(IDbContextFactory<CertificateDbContext> d
 		account.Enabled = enabled;
 		account.UpdatedAt = DateTime.UtcNow;
 		await db.SaveChangesAsync(cancellationToken);
+	}
+
+	public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+	{
+		await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+		await using var transaction = await db.Database.BeginTransactionAsync(cancellationToken);
+		var account = await db.DnsProviderAccounts.FindAsync([id], cancellationToken)
+			?? throw new KeyNotFoundException("DNS 服务商不存在。");
+		var boundDomains = await db.Domains.CountAsync(x => x.DnsProviderAccountId == id, cancellationToken);
+		if (boundDomains > 0)
+			throw new InvalidOperationException($"该 DNS 服务商仍绑定 {boundDomains} 个域名，解除绑定后才能删除。");
+
+		db.DnsProviderAccounts.Remove(account);
+		await db.SaveChangesAsync(cancellationToken);
+		await transaction.CommitAsync(cancellationToken);
 	}
 
 	private static string SafeError(Exception ex) => ex.Message.Length > 500 ? ex.Message[..500] : ex.Message;

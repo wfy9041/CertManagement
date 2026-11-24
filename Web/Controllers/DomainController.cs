@@ -22,4 +22,16 @@ public sealed class DomainController(DomainService service) : ControllerBase
 	}
 
 	public sealed record EnabledRequest(bool Enabled);
+
+	[HttpDelete("{id:int}")]
+	public async Task<IActionResult> Delete(int id, CancellationToken cancellationToken)
+	{
+		try
+		{
+			await service.DeleteAsync(id, cancellationToken);
+			return NoContent();
+		}
+		catch (KeyNotFoundException ex) { return NotFound(ex.Message); }
+		catch (InvalidOperationException ex) { return Conflict(ex.Message); }
+	}
 }

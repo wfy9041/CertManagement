@@ -7,6 +7,7 @@
 	<SatelliteResourceLanguages>zh-Hans</SatelliteResourceLanguages>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="Application\AcmeCertificateService.cs" />
     <Compile Remove="data\keys\**" />
     <Content Remove="data\keys\**" />
     <EmbeddedResource Remove="data\keys\**" />
